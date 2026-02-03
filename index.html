@@ -3,41 +3,63 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Soundscape Recorder</title>
+    <title>Advanced Soundscape Generator</title>
     <style>
         body { 
             margin: 0; 
             background: #111; 
             color: #eee; 
-            font-family: 'Segoe UI', sans-serif; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
             display: flex;
             flex-direction: column;
             align-items: center;
+            min-height: 100vh;
         }
         
         /* Main Radar Area */
         .radar-container {
             position: relative;
             margin-top: 20px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            box-shadow: 0 0 30px rgba(0,0,0,0.9);
             border-radius: 50%;
             overflow: hidden;
             background: #000;
+            /* ഡിസ്പ്ലേയിൽ കാണുമ്പോൾ സ്ക്രീനിൽ ഒതുങ്ങാൻ, പക്ഷെ സേവ് ചെയ്യുന്നത് വലിയ സൈസിൽ ആയിരിക്കും */
+            width: 95vw;
+            height: 95vw;
+            max-width: 500px;
+            max-height: 500px;
         }
-        canvas { display: block; }
+        
+        canvas { 
+            width: 100%; 
+            height: 100%; 
+        }
         
         /* Controls */
-        .controls { margin: 20px; text-align: center; }
-        button#startBtn {
+        .controls { 
+            margin: 20px; 
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        button {
             padding: 12px 25px;
-            font-size: 18px;
-            background: linear-gradient(45deg, #8e44ad, #c0392b);
-            color: white;
+            font-size: 16px;
             border: none;
             border-radius: 30px;
             cursor: pointer;
-            box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+            color: white;
+            font-weight: bold;
+            transition: transform 0.2s;
         }
+        button:active { transform: scale(0.95); }
+
+        #startBtn { background: linear-gradient(45deg, #27ae60, #2ecc71); }
+        #pauseBtn { background: #f39c12; display: none; }
+        #resumeBtn { background: #2980b9; display: none; }
 
         /* Gallery Section */
         #gallery {
@@ -49,11 +71,8 @@
             background: #222;
             border: 1px solid #444;
             padding: 10px;
-            margin-bottom: 15px;
+            margin-bottom: 20px;
             border-radius: 8px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
             animation: fadeIn 0.5s;
         }
         .gallery-item img {
@@ -61,24 +80,18 @@
             border-radius: 4px;
             border: 1px solid #333;
         }
-        .gallery-info {
-            width: 100%;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+        .gallery-actions {
             margin-top: 10px;
-            font-size: 14px;
-            color: #aaa;
+            text-align: center;
         }
         .save-btn {
-            background: #27ae60;
+            background: #8e44ad;
             color: white;
-            border: none;
-            padding: 5px 15px;
-            border-radius: 4px;
-            cursor: pointer;
+            padding: 8px 20px;
             text-decoration: none;
-            font-size: 12px;
+            border-radius: 5px;
+            font-size: 14px;
+            display: inline-block;
         }
 
         @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
@@ -87,34 +100,35 @@
 <body>
 
     <div class="controls">
-        <button id="startBtn">മൈക്രോഫോൺ ഓൺ ചെയ്യുക</button>
-        <div id="status" style="margin-top:10px; font-size: 12px; color: #888;"></div>
+        <button id="startBtn">🎤 മൈക്രോഫോൺ ഓൺ ചെയ്യുക</button>
+        <button id="pauseBtn">⏸ Pause</button>
+        <button id="resumeBtn">▶ Continue</button>
     </div>
+    
+    <div id="status" style="margin-bottom: 10px; font-size: 14px; color: #aaa;"></div>
 
     <div class="radar-container">
-        <canvas id="radar"></canvas>
+        <canvas id="radar" width="1000" height="1000"></canvas>
     </div>
 
     <h3 style="margin-top: 30px; border-bottom: 1px solid #444; padding-bottom: 5px; width: 90%; max-width: 600px;">
-        സേവ് ചെയ്ത ചിത്രങ്ങൾ (Saved Scans)
+        ഗാലറി (Saved Scans)
     </h3>
     <div id="gallery"></div>
 
     <script>
         const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resumeBtn = document.getElementById('resumeBtn');
         const canvas = document.getElementById('radar');
         const ctx = canvas.getContext('2d');
         const gallery = document.getElementById('gallery');
         const statusDiv = document.getElementById('status');
 
         let isScanning = false;
+        let isPaused = false;
         let angle = 0;
-        const scanSpeed = 0.01; // കറക്കത്തിന്റെ വേഗത ഇവിടെ മാറ്റാം
-
-        // Canvas Size Setup
-        const size = Math.min(window.innerWidth - 20, 400); // മൊബൈലിൽ സ്ക്രീൻ സൈസ് അനുസരിച്ച് മാറും
-        canvas.width = size;
-        canvas.height = size;
+        const scanSpeed = 0.008; // സ്പീഡ് ക്രമീകരിക്കാം
 
         // Initialize black background
         ctx.fillStyle = '#000';
@@ -123,14 +137,17 @@
         startBtn.onclick = async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Button visibility toggle
                 startBtn.style.display = 'none';
-                statusDiv.textContent = "Scanning... (ഒരു വട്ടം കറങ്ങുമ്പോൾ ചിത്രം താഴെ വരും)";
+                pauseBtn.style.display = 'inline-block';
+                statusDiv.textContent = "Scanning Active...";
                 
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const source = audioCtx.createMediaStreamSource(stream);
                 const analyser = audioCtx.createAnalyser();
                 
-                analyser.fftSize = 512; 
+                analyser.fftSize = 2048; // നല്ല റെസല്യൂഷന് വേണ്ടി
                 source.connect(analyser);
 
                 const bufferLength = analyser.frequencyBinCount;
@@ -144,85 +161,119 @@
             }
         };
 
+        pauseBtn.onclick = () => {
+            isPaused = true;
+            pauseBtn.style.display = 'none';
+            resumeBtn.style.display = 'inline-block';
+            statusDiv.textContent = "Paused";
+        };
+
+        resumeBtn.onclick = () => {
+            isPaused = false;
+            resumeBtn.style.display = 'none';
+            pauseBtn.style.display = 'inline-block';
+            statusDiv.textContent = "Scanning Active...";
+        };
+
         function draw(analyser, dataArray, bufferLength) {
-            if (!isScanning) return;
             requestAnimationFrame(() => draw(analyser, dataArray, bufferLength));
+
+            if (!isScanning || isPaused) return;
 
             analyser.getByteFrequencyData(dataArray);
 
             const cx = canvas.width / 2;
             const cy = canvas.height / 2;
-            const maxRadius = cx;
+            const maxRadius = cx; // വൃത്തം ക്യാൻവാസിന്റെ അറ്റം വരെ എത്തും
 
-            // Save context to rotate
             ctx.save();
             ctx.translate(cx, cy);
             ctx.rotate(angle);
 
-            // Draw a single line of frequency data
-            // We draw strictly along the X-axis after rotation
+            // Drawing Logic
             for (let i = 0; i < bufferLength; i++) {
                 const value = dataArray[i];
                 
-                // Color Mapping: Violet (Low Freq) -> Red (High Freq)
-                // Violet is around 270 in HSL, Red is 0.
-                // We map 'i' from 0..bufferLength to 270..0
+                // Color Mapping: Violet (Low) -> Red (High)
                 const hue = 270 - ((i / bufferLength) * 270);
+                const lightness = (value / 255) * 50; 
                 
-                // Brightness based on Volume (Value)
-                // 0 is black, 100 is full brightness. We max out at 60% lightness to keep color rich
-                const lightness = (value / 255) * 60; 
-                
-                // Draw only if there is sound
-                if (value > 5) {
+                if (value > 10) {
+                    // Start radius pushed out slightly to leave a small hole in center (optional)
                     const startR = (i / bufferLength) * maxRadius;
-                    const endR = ((i + 1) / bufferLength) * maxRadius;
+                    // Make blocks slightly wider to avoid gaps
+                    const endR = startR + (maxRadius / bufferLength) * 3; 
                     
                     ctx.fillStyle = `hsl(${hue}, 100%, ${lightness}%)`;
-                    // Draw a small block for this frequency
-                    ctx.fillRect(startR, -1, (endR - startR) + 1, 4); // Width overlaps slightly to avoid gaps
+                    // Drawing slightly thicker lines for visibility
+                    ctx.fillRect(startR, -2, (endR - startR), 4); 
                 }
             }
-            
             ctx.restore();
 
-            // Increment Angle
             angle += scanSpeed;
 
-            // Check if full rotation complete (2 * PI)
+            // Full rotation check
             if (angle >= Math.PI * 2) {
-                saveSnapshot();
-                
-                // Reset for next scan
+                processCompletedScan();
+                // Reset
                 angle = 0;
                 ctx.fillStyle = '#000';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
             }
         }
 
-        function saveSnapshot() {
-            // Create Image from Canvas
-            const dataURL = canvas.toDataURL("image/jpeg");
-            
-            // Generate Filename with Date & Time
-            const now = new Date();
-            const dateStr = now.toLocaleDateString('en-GB').replace(/\//g, '-'); // DD-MM-YYYY
-            const timeStr = now.toLocaleTimeString('en-GB').replace(/:/g, '-'); // HH-MM-SS
-            const filename = `soundscape_${timeStr}_${dateStr}.jpg`;
+        function processCompletedScan() {
+            // 1. Create a larger temporary canvas for watermark
+            const tempCanvas = document.createElement('canvas');
+            const footerHeight = 80; // Space for text
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height + footerHeight;
+            const tCtx = tempCanvas.getContext('2d');
 
-            // Create Gallery Item HTML
+            // 2. Fill Background
+            tCtx.fillStyle = '#000';
+            tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+            // 3. Draw the Radar Image
+            tCtx.drawImage(canvas, 0, 0);
+
+            // 4. Add Watermark Text
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('en-IN');
+            const timeStr = now.toLocaleTimeString('en-IN');
+            const siteUrl = window.location.href; // Current Page URL
+
+            tCtx.fillStyle = '#fff';
+            tCtx.font = '24px monospace';
+            tCtx.textAlign = 'center';
+            
+            // Text Line 1: Title and Date
+            tCtx.fillText(`Soundscape Scan | ${dateStr} ${timeStr}`, tempCanvas.width / 2, canvas.height + 30);
+            
+            // Text Line 2: URL
+            tCtx.fillStyle = '#888';
+            tCtx.font = '16px sans-serif';
+            tCtx.fillText(`Generated at: ${siteUrl}`, tempCanvas.width / 2, canvas.height + 60);
+
+            // 5. Generate Image URL and Add to Gallery
+            const finalImageURL = tempCanvas.toDataURL("image/jpeg", 0.9);
+            addToGallery(finalImageURL, timeStr, dateStr);
+        }
+
+        function addToGallery(url, time, date) {
+            const filename = `soundscape_${date.replace(/\//g,'-')}_${time.replace(/:/g,'-')}.jpg`;
+
             const itemDiv = document.createElement('div');
             itemDiv.className = 'gallery-item';
             
             itemDiv.innerHTML = `
-                <img src="${dataURL}" alt="Soundscape">
-                <div class="gallery-info">
-                    <span>🕒 ${now.toLocaleTimeString()} - ${now.toLocaleDateString()}</span>
-                    <a href="${dataURL}" download="${filename}" class="save-btn">💾 Save Image</a>
+                <img src="${url}" alt="Soundscape">
+                <div class="gallery-actions">
+                    <a href="${url}" download="${filename}" class="save-btn">💾 Save Image with Details</a>
                 </div>
             `;
 
-            // Add to top of gallery
             gallery.insertBefore(itemDiv, gallery.firstChild);
         }
     </script>
