@@ -3,397 +3,363 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Soundscape Generator & Player</title>
+    <title>Soundscape: Record & Play</title>
     <style>
-        body { margin: 0; background: #121212; color: #eee; font-family: monospace; text-align: center; }
+        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
         
-        /* Layout */
-        .container { max-width: 800px; margin: 0 auto; padding: 10px; }
-        
-        /* Canvas */
+        /* Container */
         .radar-wrapper {
             position: relative;
             width: 95vw; height: 95vw;
-            max-width: 500px; max-height: 500px;
-            margin: 20px auto;
+            max-width: 600px; max-height: 600px;
+            margin-top: 10px;
             border-radius: 50%;
-            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            border: 2px solid #333;
             background: #000;
             overflow: hidden;
-            border: 2px solid #333;
+            box-shadow: 0 0 30px rgba(0,255,0,0.1);
         }
-        canvas { width: 100%; height: 100%; display: block; }
+        canvas { display: block; width: 100%; height: 100%; }
 
-        /* Controls */
-        .controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 10px; }
+        /* Controls Section */
+        .controls-area {
+            margin: 15px; padding: 10px;
+            background: #111; border-radius: 10px;
+            display: flex; flex-direction: column; gap: 10px; align-items: center;
+            width: 90%; max-width: 600px;
+        }
+        .btn-group { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        
         button {
-            padding: 10px 20px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold;
+            padding: 10px 20px; font-size: 14px; border: none; border-radius: 5px; 
+            cursor: pointer; color: white; font-weight: bold; transition: 0.2s;
         }
-        #recBtn { background: #e74c3c; }
-        #playBtn { background: #27ae60; }
-        #uploadBtn { background: #3498db; }
-        
-        /* File Input hidden */
-        input[type="file"] { display: none; }
+        button:active { transform: scale(0.95); }
 
-        /* Status */
-        #status { height: 20px; color: #f39c12; margin-bottom: 5px; }
+        /* Colors */
+        .btn-rec { background: #e74c3c; }
+        .btn-pause { background: #f39c12; }
+        .btn-resume { background: #2980b9; }
+        .btn-save { background: #8e44ad; }
+        .btn-upload { background: #27ae60; }
+        .btn-stop { background: #7f8c8d; }
+
+        /* Status Text */
+        #status { font-family: monospace; color: #0f0; margin-bottom: 5px; font-size: 14px; }
         
-        /* Playback Scan Line */
+        /* Hidden Input */
+        input[type="file"] { display: none; }
+        
+        /* Player Scan Line */
         #scanLine {
             position: absolute; top: 50%; left: 50%; width: 50%; height: 2px;
             background: #fff; transform-origin: 0 0; display: none; pointer-events: none;
-            box-shadow: 0 0 10px white;
+            box-shadow: 0 0 10px white; z-index: 10;
         }
-
-        /* Gallery */
-        .gallery { display: flex; flex-direction: column-reverse; gap: 15px; margin-top: 20px; }
-        .gallery-item img { width: 150px; border-radius: 5px; border: 1px solid #555; cursor: pointer; }
-        .gallery-item { background: #222; padding: 10px; border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h2>Soundscape: Record & Play</h2>
-    
-    <div id="status">Ready. 15 Seconds Duration.</div>
+    <div class="controls-area">
+        <div id="status">Ready. Select Mode.</div>
+        
+        <div class="btn-group" id="recControls">
+            <button class="btn-rec" id="startBtn">🎤 Start Scan</button>
+            <button class="btn-pause" id="pauseBtn" style="display:none;">⏸ Pause</button>
+            <button class="btn-resume" id="resumeBtn" style="display:none;">▶ Resume</button>
+            <button class="btn-save" id="saveBtn" style="display:none;">💾 Save Image</button>
+        </div>
 
-    <div class="controls">
-        <button id="recBtn">🔴 Start Record (15s)</button>
-        <button id="uploadBtn" onclick="document.getElementById('fileInput').click()">📂 Upload Image to Play</button>
-        <input type="file" id="fileInput" accept="image/*">
-        <button id="playBtn" style="display:none;">▶ Play Image Sound</button>
-        <button id="stopBtn" style="display:none; background:#555;">⏹ Stop</button>
+        <div class="btn-group" style="border-top: 1px solid #333; padding-top:10px; margin-top:5px; width:100%;">
+            <button class="btn-upload" onclick="document.getElementById('fileInput').click()">📂 Upload & Play</button>
+            <input type="file" id="fileInput" accept="image/*">
+            <button class="btn-stop" id="stopBtn" style="display:none;">⏹ Stop Playing</button>
+        </div>
     </div>
 
     <div class="radar-wrapper">
-        <canvas id="mainCanvas" width="1000" height="1000"></canvas>
+        <canvas id="radar" width="1200" height="1200"></canvas>
         <div id="scanLine"></div>
     </div>
 
-    <div class="gallery" id="gallery"></div>
-</div>
+    <script>
+        // --- SETUP ---
+        const canvas = document.getElementById('radar');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        const status = document.getElementById('status');
+        const scanLine = document.getElementById('scanLine');
 
-<script>
-    // --- CONFIGURATION ---
-    const DURATION_MS = 15000; // 15 Seconds
-    const SAMPLE_RATE = 20000; // Max Frequency displayed
+        // Buttons
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const resumeBtn = document.getElementById('resumeBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const stopBtn = document.getElementById('stopBtn');
 
-    // --- ELEMENTS ---
-    const canvas = document.getElementById('mainCanvas');
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    const status = document.getElementById('status');
-    const scanLine = document.getElementById('scanLine');
-    const recBtn = document.getElementById('recBtn');
-    const playBtn = document.getElementById('playBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    
-    // --- VARIABLES ---
-    let audioCtx, analyser, source, stream;
-    let startTime;
-    let isRecording = false;
-    let isPlaying = false;
-    let animationId;
-    let playbackOscillators = [];
-    let loadedImageForPlayback = null;
+        // State Variables
+        let audioCtx, analyser, dataArray, source, stream;
+        let isScanning = false;
+        let isPaused = false;
+        let isPlaying = false;
+        let angle = 0;
+        let animationId;
+        let loadedImageData = null;
+        let oscs = []; // Oscillators for playback
 
-    // --- INITIAL DRAW ---
-    ctx.fillStyle = 'black';
-    ctx.fillRect(0, 0, 1000, 1000);
-    drawGrid();
+        // Settings
+        const SCAN_SPEED = 0.003; // Scanning Speed
+        const PLAY_DURATION = 15000; // 15 Seconds per rotation for playback
 
-    // ==========================================
-    // 1. RECORDING LOGIC (GENERATOR)
-    // ==========================================
-    
-    recBtn.onclick = async () => {
-        if (isRecording) return;
-        
-        try {
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            source = audioCtx.createMediaStreamSource(stream);
-            analyser = audioCtx.createAnalyser();
-            
-            analyser.fftSize = 4096;
-            analyser.smoothingTimeConstant = 0.0; // Fast response
-            source.connect(analyser);
-            
-            startRecording();
-        } catch (e) {
-            alert("Mic Access Denied: " + e.message);
-        }
-    };
-
-    function startRecording() {
-        isRecording = true;
-        recBtn.style.display = 'none';
-        status.textContent = "Recording... (15s)";
-        
-        // Reset Canvas
+        // Initialize Black Screen
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Draw Start Marker (White Line at 0 degrees)
-        ctx.strokeStyle = 'white';
-        ctx.lineWidth = 4;
-        ctx.beginPath();
-        ctx.moveTo(canvas.width/2, canvas.height/2);
-        ctx.lineTo(canvas.width, canvas.height/2);
-        ctx.stroke();
 
-        startTime = performance.now();
-        loopRecord();
-    }
+        // ==========================================
+        // 1. RECORDING (SCANNER) LOGIC
+        // ==========================================
 
-    function loopRecord() {
-        if (!isRecording) return;
-        
-        const elapsed = performance.now() - startTime;
-        const progress = elapsed / DURATION_MS;
-        
-        if (progress >= 1) {
-            finishRecording();
-            return;
-        }
-
-        requestAnimationFrame(loopRecord);
-
-        // Calculate Angle (0 to 2*PI)
-        const angle = progress * Math.PI * 2;
-        
-        // Get Audio Data
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-        analyser.getByteFrequencyData(dataArray);
-
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-        const maxRadius = cx;
-
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(angle);
-
-        // DRAWING ALGORITHM
-        // We scan from center (Low Freq) to edge (High Freq)
-        
-        // Using Logarithmic Scale for filling the circle better with human voice
-        // We skip the very first few bins (DC offset)
-        const startBin = 5; 
-        const endBin = bufferLength * 0.8; // Cut off extreme high freq silence
-        
-        for (let r = 0; r < maxRadius; r += 2) {
-            // Map Radius (0 -> max) to Frequency Index (Log Scale)
-            // This ensures low frequencies occupy more space in the center
-            const percent = r / maxRadius;
-            
-            // Log mapping formula
-            const logIndex = startBin + (endBin - startBin) * (Math.pow(100, percent) - 1) / 99;
-            const index = Math.floor(logIndex);
-            
-            const value = dataArray[index] || 0;
-
-            if (value > 10) { // Noise gate
-                // Color: Violet (270) -> Red (0)
-                const hue = 270 - (percent * 270);
+        startBtn.onclick = async () => {
+            stopPlayback(); // Stop player if running
+            try {
+                if (!stream) {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                }
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 
-                // Brightness: Based on Volume (Value)
-                // If loud (255), lightness is 60%. If quiet, 10%.
-                const lightness = 5 + (value / 255) * 65; 
+                source = audioCtx.createMediaStreamSource(stream);
+                analyser = audioCtx.createAnalyser();
+                analyser.fftSize = 4096;
+                analyser.smoothingTimeConstant = 0.5;
+                source.connect(analyser);
                 
-                ctx.fillStyle = `hsl(${hue}, 100%, ${lightness}%)`;
-                ctx.fillRect(r, -2, 4, 4); // Draw pixel
+                const bufferLength = analyser.frequencyBinCount;
+                dataArray = new Uint8Array(bufferLength);
+
+                // UI Updates
+                startBtn.style.display = 'none';
+                pauseBtn.style.display = 'inline-block';
+                saveBtn.style.display = 'inline-block';
+                status.textContent = "Scanning... (Infinite Loop)";
+                
+                isScanning = true;
+                isPaused = false;
+                loopScan();
+
+            } catch (err) {
+                alert("Mic Error: " + err.message);
             }
-        }
-        ctx.restore();
-    }
-
-    function finishRecording() {
-        isRecording = false;
-        stream.getTracks().forEach(track => track.stop());
-        status.textContent = "Recording Complete. Saving...";
-        recBtn.style.display = 'inline-block';
-        
-        processAndSave();
-    }
-
-    function processAndSave() {
-        // Add Watermark
-        const now = new Date();
-        const timeStr = now.toLocaleTimeString();
-        
-        ctx.font = "20px monospace";
-        ctx.fillStyle = "white";
-        ctx.textAlign = "right";
-        ctx.fillText(`Soundscape | ${timeStr}`, canvas.width - 20, canvas.height - 20);
-
-        // Save
-        const url = canvas.toDataURL("image/png");
-        addToGallery(url);
-        
-        // Load into player automatically
-        loadToPlayer(url);
-    }
-
-    // ==========================================
-    // 2. PLAYER LOGIC (IMAGE TO SOUND)
-    // ==========================================
-
-    document.getElementById('fileInput').onchange = function(e) {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (evt) => loadToPlayer(evt.target.result);
-            reader.readAsDataURL(file);
-        }
-    };
-
-    function loadToPlayer(src) {
-        const img = new Image();
-        img.onload = () => {
-            // Draw image to canvas to read pixel data
-            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            loadedImageForPlayback = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            playBtn.style.display = 'inline-block';
-            status.textContent = "Image Loaded. Ready to Play.";
         };
-        img.src = src;
-    }
 
-    playBtn.onclick = () => {
-        if (!loadedImageForPlayback) return;
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        
-        isPlaying = true;
-        playBtn.style.display = 'none';
-        stopBtn.style.display = 'inline-block';
-        scanLine.style.display = 'block';
-        status.textContent = "Playing Sound from Image...";
-        
-        startTime = performance.now();
-        playLoop();
-    };
+        pauseBtn.onclick = () => { isPaused = true; togglePauseUI(true); };
+        resumeBtn.onclick = () => { isPaused = false; togglePauseUI(false); };
 
-    stopBtn.onclick = () => {
-        isPlaying = false;
-        stopPlay();
-    };
-
-    function playLoop() {
-        if (!isPlaying) return;
-        
-        const elapsed = performance.now() - startTime;
-        let progress = (elapsed % DURATION_MS) / DURATION_MS; // Loop if needed, or stop
-        
-        if (elapsed > DURATION_MS) {
-            stopPlay();
-            return;
+        function togglePauseUI(paused) {
+            pauseBtn.style.display = paused ? 'none' : 'inline-block';
+            resumeBtn.style.display = paused ? 'inline-block' : 'none';
+            status.textContent = paused ? "Paused." : "Scanning...";
         }
 
-        // Update Visual Scan Line
-        const angleRad = progress * Math.PI * 2;
-        const angleDeg = progress * 360;
-        scanLine.style.transform = `translate(-50%, -50%) rotate(${angleDeg}deg) translate(50%, 0)`;
+        function loopScan() {
+            if (!isScanning) return;
+            animationId = requestAnimationFrame(loopScan);
+            if (isPaused) return;
 
-        // SYNTHESIZE SOUND
-        synthesizeSoundAtAngle(angleRad);
+            analyser.getByteFrequencyData(dataArray);
 
-        animationId = requestAnimationFrame(playLoop);
-    }
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const maxRadius = cx;
 
-    function synthesizeSoundAtAngle(angle) {
-        // Clear previous oscillators to save CPU/Ears
-        playbackOscillators.forEach(o => {
-            o.stop();
-            o.disconnect();
-        });
-        playbackOscillators = [];
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(angle);
 
-        const cx = 500; // Canvas center (1000/2)
-        const cy = 500;
-        const maxR = 500;
-        const pixels = loadedImageForPlayback.data;
+            // 1. Wiper Effect (Clear ahead)
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, -4, maxRadius, 10); 
 
-        // We can't play every pixel (too many oscillators). We sample steps.
-        const steps = 30; // Number of simultaneous tones
-        
-        for (let i = 1; i < steps; i++) {
-            const rPercent = i / steps;
-            const r = rPercent * maxR;
+            // 2. Draw Frequency
+            const startBin = 5;
+            const endBin = dataArray.length * 0.75;
+            const totalBins = endBin - startBin;
+
+            for (let r = 0; r < maxRadius; r += 2) {
+                // Logarithmic Mapping
+                const percent = r / maxRadius;
+                const logIndex = startBin + (totalBins * (Math.pow(100, percent) - 1) / 99);
+                const index = Math.floor(logIndex);
+                const value = dataArray[index] || 0;
+
+                if (value > 8) { // Noise Gate
+                    const hue = 270 - (percent * 270); // Violet -> Red
+                    const lightness = 5 + (value / 255) * 65; // Brightness
+                    
+                    ctx.fillStyle = `hsl(${hue}, 100%, ${lightness}%)`;
+                    ctx.fillRect(r, 0, 4, 3);
+                }
+            }
+            ctx.restore();
+
+            angle += SCAN_SPEED;
+            if (angle >= Math.PI * 2) angle = 0; // Infinite Loop
+        }
+
+        // ==========================================
+        // 2. SAVING (WATERMARK) LOGIC
+        // ==========================================
+
+        saveBtn.onclick = () => {
+            const wasPaused = isPaused;
+            isPaused = true; // Pause momentarily
+
+            // Create Watermarked Canvas
+            const tempCanvas = document.createElement('canvas');
+            const footerH = 150;
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height + footerH;
+            const tCtx = tempCanvas.getContext('2d');
+
+            // Draw Background & Radar
+            tCtx.fillStyle = '#000';
+            tCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            tCtx.drawImage(canvas, 0, 0);
+
+            // Draw Watermark
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('en-GB');
+            const timeStr = now.toLocaleTimeString('en-US');
+            const urlStr = window.location.href;
+
+            tCtx.textAlign = 'center';
+            tCtx.fillStyle = '#fff';
+            tCtx.font = 'bold 40px monospace';
+            tCtx.fillText(`${dateStr} | ${timeStr}`, tempCanvas.width/2, canvas.height + 60);
             
-            // Find x, y at this angle and radius
-            const x = Math.floor(cx + Math.cos(angle) * r);
-            const y = Math.floor(cy + Math.sin(angle) * r);
+            tCtx.fillStyle = '#aaa';
+            tCtx.font = '24px sans-serif';
+            tCtx.fillText(urlStr, tempCanvas.width/2, canvas.height + 110);
 
-            // Read Pixel Color
-            if (x < 0 || x >= 1000 || y < 0 || y >= 1000) continue;
-            
-            const pIndex = (y * 1000 + x) * 4;
-            const red = pixels[pIndex];
-            const green = pixels[pIndex + 1];
-            const blue = pixels[pIndex + 2];
-            
-            // Calculate Brightness (Volume)
-            // Simple formula: Average of RGB
-            const brightness = (red + green + blue) / 3;
-            
-            if (brightness > 30) { // If pixel is bright enough
-                
-                // Reconstruct Frequency (Inverse of Log Scale)
-                // Roughly mapping radius back to 0-20kHz
-                // Use exponential to match the recording scale
-                const frequency = 50 + (Math.pow(100, rPercent) * 200); 
+            // Download
+            const link = document.createElement('a');
+            link.download = `Soundscape_${Date.now()}.jpg`;
+            link.href = tempCanvas.toDataURL('image/jpeg', 0.9);
+            link.click();
 
-                // Create Oscillator
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                
-                osc.type = 'sine';
-                osc.frequency.value = frequency;
-                
-                // Volume based on brightness (very low to avoid distortion)
-                gain.gain.value = (brightness / 255) * 0.05; 
+            if (!wasPaused) isPaused = false; // Resume if needed
+        };
 
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start();
+        // ==========================================
+        // 3. PLAYER (PLAYBACK) LOGIC
+        // ==========================================
+
+        document.getElementById('fileInput').onchange = (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                stopScanning(); // Stop recording mode
+                const reader = new FileReader();
+                reader.onload = (evt) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        loadedImageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                        startPlayback();
+                    };
+                    img.src = evt.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+
+        function stopScanning() {
+            isScanning = false;
+            cancelAnimationFrame(animationId);
+            startBtn.style.display = 'inline-block';
+            pauseBtn.style.display = 'none';
+            resumeBtn.style.display = 'none';
+            saveBtn.style.display = 'none';
+        }
+
+        function startPlayback() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            isPlaying = true;
+            stopBtn.style.display = 'inline-block';
+            scanLine.style.display = 'block';
+            status.textContent = "Playing Sound from Image...";
+            
+            const startTime = performance.now();
+            
+            function playLoop() {
+                if (!isPlaying) return;
                 
-                playbackOscillators.push(osc);
+                const elapsed = performance.now() - startTime;
+                const progress = (elapsed % PLAY_DURATION) / PLAY_DURATION;
+                const angleRad = progress * Math.PI * 2;
+
+                // Move Scan Line
+                scanLine.style.transform = `translate(-50%, -50%) rotate(${progress * 360}deg) translate(50%, 0)`;
+
+                synthesizeSound(angleRad);
+                requestAnimationFrame(playLoop);
+            }
+            playLoop();
+        }
+
+        function synthesizeSound(angle) {
+            // Stop old oscillators
+            oscs.forEach(o => { o.stop(); o.disconnect(); });
+            oscs = [];
+
+            if (!loadedImageData) return;
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const maxRadius = cx;
+            const pixels = loadedImageData.data;
+            const steps = 30; // Quality of synthesis
+
+            for (let i = 1; i < steps; i++) {
+                const percent = i / steps;
+                const r = percent * maxRadius;
+                
+                // Get Pixel coords
+                const x = Math.floor(cx + Math.cos(angle) * r);
+                const y = Math.floor(cy + Math.sin(angle) * r);
+
+                if (x < 0 || x >= canvas.width || y < 0 || y >= canvas.height) continue;
+
+                const pIndex = (y * canvas.width + x) * 4;
+                const brightness = (pixels[pIndex] + pixels[pIndex+1] + pixels[pIndex+2]) / 3;
+
+                if (brightness > 30) {
+                    // Inverse Log Mapping (Radius -> Frequency)
+                    const frequency = 50 + (Math.pow(100, percent) * 200); 
+                    
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    
+                    osc.type = 'sine';
+                    osc.frequency.value = frequency;
+                    gain.gain.value = (brightness / 255) * 0.05; // Low volume
+
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start();
+                    oscs.push(osc);
+                }
             }
         }
-    }
 
-    function stopPlay() {
-        isPlaying = false;
-        cancelAnimationFrame(animationId);
-        playbackOscillators.forEach(o => o.stop());
-        playBtn.style.display = 'inline-block';
-        stopBtn.style.display = 'none';
-        scanLine.style.display = 'none';
-        status.textContent = "Playback Stopped.";
-    }
+        function stopPlayback() {
+            isPlaying = false;
+            stopBtn.style.display = 'none';
+            scanLine.style.display = 'none';
+            oscs.forEach(o => o.stop());
+            status.textContent = "Playback Stopped.";
+        }
+        
+        stopBtn.onclick = stopPlayback;
 
-    // --- UTILS ---
-    function addToGallery(url) {
-        const div = document.createElement('div');
-        div.className = 'gallery-item';
-        div.innerHTML = `
-            <span>Recorded Image</span>
-            <div>
-                <a href="${url}" download="soundscape.png" style="color:#3498db; text-decoration:none;">💾 Save</a>
-                <img src="${url}" onclick="loadToPlayer(this.src)">
-            </div>
-        `;
-        document.getElementById('gallery').prepend(div);
-    }
-    
-    function drawGrid() {
-        // Just a helper function if needed for static grid
-    }
-
-</script>
-
+    </script>
 </body>
 </html>
