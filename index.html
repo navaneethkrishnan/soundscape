@@ -3,111 +3,228 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Circular Spectrogram Radar</title>
+    <title>Soundscape Recorder</title>
     <style>
-        body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
+        body { 
+            margin: 0; 
+            background: #111; 
+            color: #eee; 
+            font-family: 'Segoe UI', sans-serif; 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        /* Main Radar Area */
+        .radar-container {
+            position: relative;
+            margin-top: 20px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            border-radius: 50%;
+            overflow: hidden;
+            background: #000;
+        }
         canvas { display: block; }
-        #controls { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
-        button { padding: 15px 30px; font-size: 18px; background: #00ff00; color: black; border: none; cursor: pointer; border-radius: 5px; box-shadow: 0 0 15px #00ff00; }
-        .info { position: absolute; top: 10px; left: 10px; pointer-events: none; }
+        
+        /* Controls */
+        .controls { margin: 20px; text-align: center; }
+        button#startBtn {
+            padding: 12px 25px;
+            font-size: 18px;
+            background: linear-gradient(45deg, #8e44ad, #c0392b);
+            color: white;
+            border: none;
+            border-radius: 30px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255, 255, 255, 0.2);
+        }
+
+        /* Gallery Section */
+        #gallery {
+            width: 90%;
+            max-width: 600px;
+            margin-bottom: 50px;
+        }
+        .gallery-item {
+            background: #222;
+            border: 1px solid #444;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            animation: fadeIn 0.5s;
+        }
+        .gallery-item img {
+            width: 100%;
+            border-radius: 4px;
+            border: 1px solid #333;
+        }
+        .gallery-info {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #aaa;
+        }
+        .save-btn {
+            background: #27ae60;
+            color: white;
+            border: none;
+            padding: 5px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 12px;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body>
 
-    <div class="info">
-        <div>MODE: SPECTRAL MAPPING</div>
-        <div id="freqInfo">Low Freq (Center) -> High Freq (Edge)</div>
+    <div class="controls">
+        <button id="startBtn">മൈക്രോഫോൺ ഓൺ ചെയ്യുക</button>
+        <div id="status" style="margin-top:10px; font-size: 12px; color: #888;"></div>
     </div>
 
-    <div id="controls">
-        <button id="startBtn">START SONAR</button>
+    <div class="radar-container">
+        <canvas id="radar"></canvas>
     </div>
-    
-    <canvas id="canvas"></canvas>
+
+    <h3 style="margin-top: 30px; border-bottom: 1px solid #444; padding-bottom: 5px; width: 90%; max-width: 600px;">
+        സേവ് ചെയ്ത ചിത്രങ്ങൾ (Saved Scans)
+    </h3>
+    <div id="gallery"></div>
 
     <script>
         const startBtn = document.getElementById('startBtn');
-        const canvas = document.getElementById('canvas');
+        const canvas = document.getElementById('radar');
         const ctx = canvas.getContext('2d');
-        let angle = 0;
+        const gallery = document.getElementById('gallery');
+        const statusDiv = document.getElementById('status');
 
-        // സ്ക്രീൻ മുഴുവൻ കവർ ചെയ്യാൻ
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+        let isScanning = false;
+        let angle = 0;
+        const scanSpeed = 0.01; // കറക്കത്തിന്റെ വേഗത ഇവിടെ മാറ്റാം
+
+        // Canvas Size Setup
+        const size = Math.min(window.innerWidth - 20, 400); // മൊബൈലിൽ സ്ക്രീൻ സൈസ് അനുസരിച്ച് മാറും
+        canvas.width = size;
+        canvas.height = size;
+
+        // Initialize black background
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
         startBtn.onclick = async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                startBtn.parentElement.style.display = 'none';
-
+                startBtn.style.display = 'none';
+                statusDiv.textContent = "Scanning... (ഒരു വട്ടം കറങ്ങുമ്പോൾ ചിത്രം താഴെ വരും)";
+                
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const source = audioCtx.createMediaStreamSource(stream);
                 const analyser = audioCtx.createAnalyser();
                 
-                // കൂടുതൽ കൃത്യതയ്ക്കായി FFT സൈസ് കൂട്ടുന്നു
-                analyser.fftSize = 1024; 
+                analyser.fftSize = 512; 
                 source.connect(analyser);
 
                 const bufferLength = analyser.frequencyBinCount;
                 const dataArray = new Uint8Array(bufferLength);
                 
-                // പശ്ചാത്തലം കറുപ്പാക്കുന്നു
-                ctx.fillStyle = '#000';
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-                function draw() {
-                    requestAnimationFrame(draw);
-                    analyser.getByteFrequencyData(dataArray);
-
-                    const cx = canvas.width / 2;
-                    const cy = canvas.height / 2;
-                    const maxRadius = Math.min(cx, cy);
-
-                    // ഓരോ തവണയും കോൺ അല്പം മാറ്റുന്നു (Rotation)
-                    angle += 0.005; 
-                    
-                    // പഴയ വരകൾ മായ്ക്കാതിരുന്നാൽ ഇതൊരു ഹിസ്റ്ററി പോലെ കാണാം
-                    // ഇവിടെ നമ്മൾ റഡാർ വര (Scanner Line) മാത്രം വരയ്ക്കുന്നു
-
-                    ctx.save();
-                    ctx.translate(cx, cy);
-                    ctx.rotate(angle);
-
-                    // ഓരോ ഫ്രീക്വൻസിയും വരയ്ക്കുന്നു
-                    // കനം കുറഞ്ഞ ശബ്ദം (Bass) നടുക്കും, കനം കൂടിയത് (Treble) അറ്റത്തും വരും
-                    
-                    for (let i = 0; i < bufferLength; i++) {
-                        const value = dataArray[i];
-                        
-                        // ശബ്ദമില്ലെങ്കിൽ വരയ്ക്കേണ്ട
-                        if (value > 10) { 
-                            const percent = i / bufferLength;
-                            const radius = percent * maxRadius;
-                            
-                            // നിറം തീരുമാനിക്കുന്നു (Hue based on amplitude & frequency)
-                            // ശബ്ദം കൂടുമ്പോൾ തെളിച്ചം കൂടും
-                            const hue = i + (value / 2); 
-                            const lightness = value / 255 * 60; // വെളിച്ചം
-                            
-                            ctx.fillStyle = `hsla(${hue}, 100%, ${lightness}%, 1)`;
-                            
-                            // ചെറിയൊരു ബിന്ദു വരയ്ക്കുന്നു
-                            ctx.fillRect(radius, 0, 2, 2); 
-                        }
-                    }
-                    ctx.restore();
-
-                    // സ്കാനർ കറങ്ങി വരുന്നത് കാണിക്കാൻ പഴയത് പതുക്കെ ഫേഡ് ചെയ്യുന്നു
-                    // ഈ വരി മാറ്റിയാൽ ചിത്രം മായാതെ നിൽക്കും
-                    ctx.fillStyle = 'rgba(0, 0, 0, 0.01)'; 
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                }
-                draw();
+                isScanning = true;
+                draw(analyser, dataArray, bufferLength);
 
             } catch (err) {
                 alert("Error: " + err.message);
             }
         };
+
+        function draw(analyser, dataArray, bufferLength) {
+            if (!isScanning) return;
+            requestAnimationFrame(() => draw(analyser, dataArray, bufferLength));
+
+            analyser.getByteFrequencyData(dataArray);
+
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const maxRadius = cx;
+
+            // Save context to rotate
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.rotate(angle);
+
+            // Draw a single line of frequency data
+            // We draw strictly along the X-axis after rotation
+            for (let i = 0; i < bufferLength; i++) {
+                const value = dataArray[i];
+                
+                // Color Mapping: Violet (Low Freq) -> Red (High Freq)
+                // Violet is around 270 in HSL, Red is 0.
+                // We map 'i' from 0..bufferLength to 270..0
+                const hue = 270 - ((i / bufferLength) * 270);
+                
+                // Brightness based on Volume (Value)
+                // 0 is black, 100 is full brightness. We max out at 60% lightness to keep color rich
+                const lightness = (value / 255) * 60; 
+                
+                // Draw only if there is sound
+                if (value > 5) {
+                    const startR = (i / bufferLength) * maxRadius;
+                    const endR = ((i + 1) / bufferLength) * maxRadius;
+                    
+                    ctx.fillStyle = `hsl(${hue}, 100%, ${lightness}%)`;
+                    // Draw a small block for this frequency
+                    ctx.fillRect(startR, -1, (endR - startR) + 1, 4); // Width overlaps slightly to avoid gaps
+                }
+            }
+            
+            ctx.restore();
+
+            // Increment Angle
+            angle += scanSpeed;
+
+            // Check if full rotation complete (2 * PI)
+            if (angle >= Math.PI * 2) {
+                saveSnapshot();
+                
+                // Reset for next scan
+                angle = 0;
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+        }
+
+        function saveSnapshot() {
+            // Create Image from Canvas
+            const dataURL = canvas.toDataURL("image/jpeg");
+            
+            // Generate Filename with Date & Time
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('en-GB').replace(/\//g, '-'); // DD-MM-YYYY
+            const timeStr = now.toLocaleTimeString('en-GB').replace(/:/g, '-'); // HH-MM-SS
+            const filename = `soundscape_${timeStr}_${dateStr}.jpg`;
+
+            // Create Gallery Item HTML
+            const itemDiv = document.createElement('div');
+            itemDiv.className = 'gallery-item';
+            
+            itemDiv.innerHTML = `
+                <img src="${dataURL}" alt="Soundscape">
+                <div class="gallery-info">
+                    <span>🕒 ${now.toLocaleTimeString()} - ${now.toLocaleDateString()}</span>
+                    <a href="${dataURL}" download="${filename}" class="save-btn">💾 Save Image</a>
+                </div>
+            `;
+
+            // Add to top of gallery
+            gallery.insertBefore(itemDiv, gallery.firstChild);
+        }
     </script>
 </body>
 </html>
