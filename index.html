@@ -3,97 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Radar Sound Scanner</title>
+    <title>Circular Spectrogram Radar</title>
     <style>
-        body { margin: 0; background: #001100; color: #0f0; overflow: hidden; font-family: monospace; }
+        body { margin: 0; background: #000; overflow: hidden; font-family: monospace; color: #0f0; }
         canvas { display: block; }
-        .overlay { position: absolute; top: 10px; left: 10px; z-index: 10; pointer-events: none; }
-        button { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 15px 30px; font-size: 20px; background: #0f0; color: black; border: none; cursor: pointer; border-radius: 5px; box-shadow: 0 0 20px #0f0; }
+        #controls { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        button { padding: 15px 30px; font-size: 18px; background: #00ff00; color: black; border: none; cursor: pointer; border-radius: 5px; box-shadow: 0 0 15px #00ff00; }
+        .info { position: absolute; top: 10px; left: 10px; pointer-events: none; }
     </style>
 </head>
 <body>
 
-    <div class="overlay">
-        <div>RADAR: ACTIVE</div>
-        <div id="status">Scanning...</div>
+    <div class="info">
+        <div>MODE: SPECTRAL MAPPING</div>
+        <div id="freqInfo">Low Freq (Center) -> High Freq (Edge)</div>
     </div>
-    <button id="startBtn">START SCANNER</button>
-    <canvas id="radar"></canvas>
+
+    <div id="controls">
+        <button id="startBtn">START SONAR</button>
+    </div>
+    
+    <canvas id="canvas"></canvas>
 
     <script>
         const startBtn = document.getElementById('startBtn');
-        const canvas = document.getElementById('radar');
+        const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const statusDiv = document.getElementById('status');
+        let angle = 0;
+
+        // സ്ക്രീൻ മുഴുവൻ കവർ ചെയ്യാൻ
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
 
         startBtn.onclick = async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                startBtn.style.display = 'none';
-                
+                startBtn.parentElement.style.display = 'none';
+
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const source = audioCtx.createMediaStreamSource(stream);
                 const analyser = audioCtx.createAnalyser();
-                analyser.fftSize = 256;
+                
+                // കൂടുതൽ കൃത്യതയ്ക്കായി FFT സൈസ് കൂട്ടുന്നു
+                analyser.fftSize = 1024; 
                 source.connect(analyser);
 
                 const bufferLength = analyser.frequencyBinCount;
                 const dataArray = new Uint8Array(bufferLength);
+                
+                // പശ്ചാത്തലം കറുപ്പാക്കുന്നു
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-                canvas.width = window.innerWidth;
-                canvas.height = window.innerHeight;
-                
-                let angle = 0;
-                
                 function draw() {
                     requestAnimationFrame(draw);
-                    
-                    // പശ്ചാത്തലം മങ്ങിക്കാൻ (Fading effect)
-                    ctx.fillStyle = 'rgba(0, 20, 0, 0.05)';
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    analyser.getByteFrequencyData(dataArray);
 
                     const cx = canvas.width / 2;
                     const cy = canvas.height / 2;
                     const maxRadius = Math.min(cx, cy);
 
-                    // ഗ്രിഡ് വരയ്ക്കുന്നു
-                    ctx.strokeStyle = '#004400';
-                    ctx.lineWidth = 1;
-                    ctx.beginPath();
-                    ctx.arc(cx, cy, maxRadius * 0.3, 0, Math.PI * 2);
-                    ctx.arc(cx, cy, maxRadius * 0.6, 0, Math.PI * 2);
-                    ctx.arc(cx, cy, maxRadius * 0.9, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    // റഡാർ സ്കാനിംഗ് ലൈൻ (കറങ്ങുന്ന വര)
-                    angle += 0.02;
-                    ctx.strokeStyle = '#0f0';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(cx, cy);
-                    ctx.lineTo(cx + Math.cos(angle) * maxRadius, cy + Math.sin(angle) * maxRadius);
-                    ctx.stroke();
-
-                    // ശബ്ദം വിശകലനം ചെയ്യുന്നു
-                    analyser.getByteFrequencyData(dataArray);
+                    // ഓരോ തവണയും കോൺ അല്പം മാറ്റുന്നു (Rotation)
+                    angle += 0.005; 
                     
-                    // ശബ്ദമുണ്ടെങ്കിൽ മാത്രം പച്ച പൊട്ടുകൾ ഇടുന്നു
-                    for (let i = 0; i < bufferLength; i++) {
-                        const volume = dataArray[i];
-                        
-                        if (volume > 50) { // ശബ്ദം 50-ൽ കൂടുതലാണെങ്കിൽ
-                            const distance = (i / bufferLength) * maxRadius; // ഫ്രീക്വൻസി അനുസരിച്ച് ദൂരം
-                            
-                            // സ്കാനർ കറങ്ങുന്ന ദിശയിൽ മാത്രം പൊട്ടുകൾ
-                            const x = cx + Math.cos(angle) * distance;
-                            const y = cy + Math.sin(angle) * distance;
+                    // പഴയ വരകൾ മായ്ക്കാതിരുന്നാൽ ഇതൊരു ഹിസ്റ്ററി പോലെ കാണാം
+                    // ഇവിടെ നമ്മൾ റഡാർ വര (Scanner Line) മാത്രം വരയ്ക്കുന്നു
 
-                            ctx.fillStyle = `rgba(0, 255, 0, ${volume / 255})`;
-                            ctx.beginPath();
-                            ctx.arc(x, y, 3, 0, Math.PI * 2);
-                            ctx.fill();
+                    ctx.save();
+                    ctx.translate(cx, cy);
+                    ctx.rotate(angle);
+
+                    // ഓരോ ഫ്രീക്വൻസിയും വരയ്ക്കുന്നു
+                    // കനം കുറഞ്ഞ ശബ്ദം (Bass) നടുക്കും, കനം കൂടിയത് (Treble) അറ്റത്തും വരും
+                    
+                    for (let i = 0; i < bufferLength; i++) {
+                        const value = dataArray[i];
+                        
+                        // ശബ്ദമില്ലെങ്കിൽ വരയ്ക്കേണ്ട
+                        if (value > 10) { 
+                            const percent = i / bufferLength;
+                            const radius = percent * maxRadius;
+                            
+                            // നിറം തീരുമാനിക്കുന്നു (Hue based on amplitude & frequency)
+                            // ശബ്ദം കൂടുമ്പോൾ തെളിച്ചം കൂടും
+                            const hue = i + (value / 2); 
+                            const lightness = value / 255 * 60; // വെളിച്ചം
+                            
+                            ctx.fillStyle = `hsla(${hue}, 100%, ${lightness}%, 1)`;
+                            
+                            // ചെറിയൊരു ബിന്ദു വരയ്ക്കുന്നു
+                            ctx.fillRect(radius, 0, 2, 2); 
                         }
                     }
+                    ctx.restore();
+
+                    // സ്കാനർ കറങ്ങി വരുന്നത് കാണിക്കാൻ പഴയത് പതുക്കെ ഫേഡ് ചെയ്യുന്നു
+                    // ഈ വരി മാറ്റിയാൽ ചിത്രം മായാതെ നിൽക്കും
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.01)'; 
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
                 }
                 draw();
 
