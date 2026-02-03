@@ -3,31 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ultimate Infinity Soundscape</title>
+    <title>Soundscape Pro (Steganography)</title>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        body { margin: 0; background: #050505; color: #fff; font-family: monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
         
         .radar-box {
             position: relative; margin-top: 15px;
-            width: 95vw; height: 95vw; max-width: 550px; max-height: 550px;
+            width: 95vw; height: 95vw; max-width: 500px; max-height: 500px;
             border-radius: 50%; border: 4px solid #333; background: #000;
-            overflow: hidden; box-shadow: 0 0 25px rgba(0,255,0,0.15);
+            overflow: hidden; box-shadow: 0 0 25px rgba(0,255,0,0.1);
         }
         canvas { display: block; width: 100%; height: 100%; }
 
         .controls {
             margin: 15px; padding: 12px; background: #111; border-radius: 12px;
-            display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
-            width: 95%; max-width: 600px; border: 1px solid #222;
+            display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; width: 95%; max-width: 600px;
         }
-        button { padding: 10px 20px; font-size: 13px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; transition: 0.2s; }
-        button:active { transform: scale(0.95); }
-
+        button { padding: 10px 18px; font-size: 13px; border: none; border-radius: 5px; cursor: pointer; color: white; font-weight: bold; }
         .btn-rec { background: #e74c3c; }
         .btn-stop { background: #7f8c8d; }
         .btn-up { background: #27ae60; }
         
-        #status { color: #f1c40f; margin-bottom: 5px; font-size: 12px; font-family: monospace; }
+        #status { color: #f1c40f; margin-bottom: 5px; font-size: 12px; }
         
         /* Playback Scan Line */
         #scanLine {
@@ -38,12 +35,10 @@
 
         /* Gallery */
         #gallery { width: 95%; max-width: 600px; margin-bottom: 60px; display: flex; flex-direction: column; gap: 15px; }
-        .item { background: #1a1a1a; border: 1px solid #333; padding: 10px; border-radius: 8px; display: flex; gap: 12px; align-items: center; animation: fadeIn 0.5s; }
-        .item img { width: 90px; height: 90px; object-fit: cover; border: 1px solid #555; cursor: pointer; border-radius: 4px; }
+        .item { background: #1a1a1a; border: 1px solid #333; padding: 10px; border-radius: 8px; display: flex; gap: 12px; align-items: center; }
+        .item img { width: 80px; height: 80px; object-fit: cover; border: 1px solid #555; cursor: pointer; border-radius: 4px; }
         .info { font-size: 11px; color: #aaa; flex: 1; }
-        .btn-dl { display: inline-block; background: #333; color: white; text-decoration: none; padding: 6px 12px; border-radius: 4px; margin-top: 6px; font-size: 11px; border: 1px solid #444; }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .btn-dl { display: inline-block; background: #333; color: white; text-decoration: none; padding: 6px 12px; border-radius: 4px; margin-top: 6px; font-size: 11px; border: 1px solid #555; }
     </style>
 </head>
 <body>
@@ -58,15 +53,15 @@
     <div id="status">Ready.</div>
 
     <div class="radar-box">
-        <canvas id="radar" width="1000" height="1000"></canvas>
+        <canvas id="radar" width="800" height="800"></canvas>
         <div id="scanLine"></div>
     </div>
 
-    <h3 style="color:#444; font-size:11px; margin-top:20px;">SAVED LOOPS (Auto-Saved)</h3>
+    <h3 style="color:#444; font-size:11px; margin-top:20px;">SAVED LOOPS</h3>
     <div id="gallery"></div>
 
     <script>
-        const LOOP_MS = 15000; // 15 Seconds
+        const LOOP_MS = 15000;
         const SPEED = (Math.PI * 2) / (LOOP_MS / 16.66);
 
         const canvas = document.getElementById('radar');
@@ -81,10 +76,10 @@
         let recorder, chunks = [];
         let isRec = false, angle = 0, animId;
         let player = null;
-        let tempSnap = null; // Snapshot storage
+        let tempSnap = null;
 
-        // Init Black Screen
-        ctx.fillStyle = '#000'; ctx.fillRect(0,0,1000,1000);
+        // Init Canvas
+        ctx.fillStyle = '#000'; ctx.fillRect(0,0,800,800);
 
         // --- 1. RECORDING LOOP ---
         startBtn.onclick = async () => {
@@ -102,14 +97,24 @@
                     dataArray = new Uint8Array(analyser.frequencyBinCount);
                 }
 
-                setupRecorder();
+                // Recorder Setup
+                recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+                chunks = [];
+                recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
+                
+                recorder.onstop = () => {
+                    const blob = new Blob(chunks, {type:'audio/webm'});
+                    chunks = [];
+                    // Process using the snapshot
+                    if(tempSnap) processToImage(blob, tempSnap);
+                };
 
                 startBtn.style.display = 'none';
-                status.textContent = "Recording... (Looping every 15s)";
+                status.textContent = "Recording... (Looping)";
                 
                 isRec = true; 
                 angle = 0;
-                ctx.fillStyle='#000'; ctx.fillRect(0,0,1000,1000); // Clear
+                ctx.fillStyle='#000'; ctx.fillRect(0,0,800,800);
                 
                 recorder.start();
                 loopDraw();
@@ -117,33 +122,18 @@
             } catch(e) { alert("Mic Error: "+e); }
         };
 
-        function setupRecorder() {
-            recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
-            chunks = [];
-            recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
-            
-            // Loop End Action
-            recorder.onstop = () => {
-                const blob = new Blob(chunks, {type:'audio/webm'});
-                chunks = [];
-                // Process and Save using the SNAPSHOT taken before wipe
-                if(tempSnap) processToImage(blob, tempSnap);
-            };
-        }
-
         function loopDraw() {
             if(!isRec) return;
             animId = requestAnimationFrame(loopDraw);
 
             analyser.getByteFrequencyData(dataArray);
 
-            const cx = 500, cy = 500, maxR = 490;
+            const cx = 400, cy = 400, maxR = 390;
             
             ctx.save();
             ctx.translate(cx, cy);
             ctx.rotate(angle);
 
-            // Draw Frequency
             const len = dataArray.length * 0.75;
             for(let r=0; r<maxR; r+=4) {
                 const percent = r/maxR;
@@ -157,81 +147,114 @@
                     ctx.fillRect(r, -2, 6, 6);
                 }
             }
-            // Scanner Head
             ctx.fillStyle='#fff'; ctx.fillRect(maxR-10, -1, 10, 2);
             ctx.restore();
 
             angle += SPEED;
 
-            // CHECK LOOP END
+            // LOOP END
             if(angle >= Math.PI*2) {
-                // 1. Take Snapshot (Crucial: Before Wiping)
+                // 1. Snapshot BEFORE wipe
                 const snap = document.createElement('canvas');
-                snap.width = 1000; snap.height = 1000;
+                snap.width = 800; snap.height = 800;
                 snap.getContext('2d').drawImage(canvas, 0, 0);
                 tempSnap = snap; 
 
-                // 2. Stop Recorder (This triggers 'onstop' -> processToImage)
+                // 2. Stop Recorder
                 recorder.stop(); 
 
-                // 3. Reset Screen
+                // 3. Reset
                 angle = 0;
-                ctx.fillStyle='#000'; ctx.fillRect(0,0,1000,1000);
+                ctx.fillStyle='#000'; ctx.fillRect(0,0,800,800);
 
-                // 4. Restart Recorder
+                // 4. Restart
                 setTimeout(() => { if(isRec) recorder.start(); }, 50);
             }
         }
 
-        // --- 2. ENCODING (Audio -> Pixels) ---
-        function processToImage(audioBlob, visualSnap) {
+        // --- 2. ROBUST ENCODING (Pixels) ---
+        function processToImage(blob, visualSnap) {
             const reader = new FileReader();
-            reader.readAsDataURL(audioBlob);
+            reader.readAsDataURL(blob);
             reader.onloadend = () => {
-                const audioBase64 = reader.result;
-                embedData(visualSnap, audioBase64);
+                const b64 = reader.result;
+                embedData(visualSnap, b64);
             };
         }
 
         function embedData(imgCvs, b64) {
-            // New Canvas with space at bottom
+            // New Canvas (800w x 1200h) - More space for data
             const final = document.createElement('canvas');
-            const dataH = 200; // Space for pixels
-            const footH = 80;
-            final.width = 1000; final.height = 1000 + dataH + footH;
+            const dataH = 400; // Large data area
+            final.width = 800; final.height = 800 + dataH;
             const fCtx = final.getContext('2d');
 
-            // Draw Black BG & Visual
-            fCtx.fillStyle='#000'; fCtx.fillRect(0,0,1000, final.height);
+            // Draw Visual
+            fCtx.fillStyle='#000'; fCtx.fillRect(0,0,800, final.height);
             fCtx.drawImage(imgCvs, 0, 0);
 
-            // Separator Line
-            fCtx.fillStyle='#333'; fCtx.fillRect(0,1000,1000,2);
-            fCtx.font="14px monospace"; fCtx.fillStyle="#666"; fCtx.textAlign="center";
-            fCtx.fillText("--- AUDIO DATA EMBEDDED BELOW ---", 500, 1015);
+            // Separator
+            fCtx.fillStyle='#333'; fCtx.fillRect(0,800,800,2);
+            fCtx.fillStyle='#fff'; fCtx.font='12px monospace'; fCtx.textAlign='center';
+            fCtx.fillText("AUDIO DATA REGION - DO NOT CROP", 400, 815);
 
-            // --- PIXEL ENCODING ---
-            const str = "###S###" + b64 + "###E###";
-            let x=0, y=1020;
+            // --- DIRECT PIXEL MAPPING ---
+            // Prepare Data String: Length + Separator + Base64
+            // We store the LENGTH of the string in the first few pixels to ensure we read back correctly.
             
-            for(let i=0; i<str.length; i++) {
-                const c = str.charCodeAt(i);
-                // Store byte in RED channel. 
-                // Green & Blue are used for 'techy' look
-                fCtx.fillStyle = `rgb(${c}, 20, 50)`; 
-                fCtx.fillRect(x, y, 2, 2); // 2x2 Pixel Block
+            const fullString = b64;
+            const dataLength = fullString.length;
+            
+            // Get Image Data for the data region
+            // We start writing from y=820
+            const startY = 820;
+            const imgData = fCtx.createImageData(800, dataH - 20);
+            const d = imgData.data;
+            
+            // Encode Length (first 4 pixels = 32 bit integer)
+            // Storing length allows us to stop reading exactly where needed.
+            d[0] = (dataLength >> 24) & 0xFF;
+            d[1] = (dataLength >> 16) & 0xFF;
+            d[2] = (dataLength >> 8) & 0xFF;
+            d[3] = (dataLength & 0xFF);
+            d[4] = 255; // Marker
+            d[5] = 255;
+            d[6] = 255;
+            d[7] = 255;
+
+            // Encode String
+            let pixelIdx = 8; // Start after length header (4 pixels * 4 channels = 16 bytes, but we used 2 pixels)
+            // Actually, imageData is R,G,B,A. 
+            // We used 0-3 (Pixel 1) and 4-7 (Pixel 2). So data starts at index 8.
+
+            for (let i = 0; i < dataLength; i++) {
+                const charCode = fullString.charCodeAt(i);
                 
-                x+=2;
-                if(x>=1000) { x=0; y+=2; }
+                // Write into Red, Green, Blue channels sequentially for density
+                // This fits 3 chars per pixel, or we can stay safe with 1 char per pixel channel.
+                // Let's do 1 char per byte (channel).
+                
+                if (pixelIdx >= d.length) break; // Overflow protection
+                
+                d[pixelIdx] = charCode; // Write to current channel
+                d[pixelIdx + 3] = 255; // Alpha must be 255
+                
+                pixelIdx++;
+                
+                // Skip Alpha channel (every 4th byte)
+                if ((pixelIdx + 1) % 4 === 0) {
+                    d[pixelIdx] = 255; // Set Alpha to opaque
+                    pixelIdx++;
+                }
             }
+
+            // Put data back
+            fCtx.putImageData(imgData, 0, startY);
 
             // Watermark
             const t = new Date().toLocaleTimeString();
-            fCtx.fillStyle='#fff'; fCtx.textAlign='center';
-            fCtx.font='bold 24px monospace';
-            fCtx.fillText(t, 500, final.height - 30);
-            fCtx.font='16px sans-serif'; fCtx.fillStyle='#888';
-            fCtx.fillText("Save as PNG to keep Audio", 500, final.height - 10);
+            fCtx.fillStyle='#fff'; fCtx.font='20px monospace';
+            fCtx.fillText(t, 400, final.height - 30);
 
             const url = final.toDataURL("image/png");
             addToGallery(url, t, b64);
@@ -244,22 +267,18 @@
                 <img src="${url}">
                 <div class="info">
                     <b>Rec: ${time}</b><br>
-                    <span style="color:#2ecc71">▶ Click Image to Play</span>
+                    <span>Size: 15s Audio</span>
                 </div>
                 <a href="${url}" download="Soundscape_${Date.now()}.png" class="btn-dl">💾 Save PNG</a>
             `;
-            
-            // Optimization: If played immediately, use memory (fast)
-            // If uploaded later, use pixel decoding.
             div.querySelector('img').onclick = () => {
-                if(directAudio) playAudioString(directAudio); // Fast play
-                else playFromPixels(url); // Should not happen here but good backup
+                if(directAudio) playAudioString(directAudio); // Session Cache
+                else playFromPixels(url); // Decode
             };
             gallery.prepend(div);
         }
 
-        // --- 3. DECODING (Pixels -> Audio) ---
-        // For Uploaded Files
+        // --- 3. DECODING ---
         document.getElementById('fileIn').onchange = e => {
             const f = e.target.files[0];
             if(f) {
@@ -271,60 +290,78 @@
 
         function playFromPixels(src) {
             stopPlayback();
-            status.textContent = "Scanning Pixels for Audio...";
+            status.textContent = "Analyzing Pixels...";
             
             const img = new Image();
+            img.crossOrigin = "Anonymous"; // Fix for some browsers
             img.onload = () => {
-                // Draw to canvas to read
-                ctx.drawImage(img, 0, 0, 1000, 1000); // Visuals
-                
-                // Read Data Area
+                // Prepare Canvas for reading
                 const tC = document.createElement('canvas');
                 tC.width = img.width; tC.height = img.height;
                 const tX = tC.getContext('2d');
+                // IMPORTANT: Disable smoothing to keep pixel values exact
+                tX.imageSmoothingEnabled = false; 
                 tX.drawImage(img, 0, 0);
                 
-                // Scan pixels from y=1020
-                const data = tX.getImageData(0, 1020, img.width, 300).data;
-                let buffer = "";
+                // Read from y=820
+                const startY = 820;
+                // Grab a large chunk
+                const imgData = tX.getImageData(0, startY, img.width, 380); 
+                const d = imgData.data;
+
+                // 1. Read Length Header
+                const len = (d[0] << 24) | (d[1] << 16) | (d[2] << 8) | d[3];
                 
-                // Read every 2nd pixel (2x2 blocks)
-                for(let i=0; i<data.length; i+=8) {
-                    const r = data[i]; // Read Red Channel
-                    if(r>0) buffer += String.fromCharCode(r);
+                if (len <= 0 || len > 2000000) { // Sanity check (max 2MB string)
+                     alert("Could not detect valid audio header. Ensure this is the original PNG.");
+                     status.textContent = "Error: Invalid Header";
+                     return;
                 }
 
-                const s = buffer.indexOf("###S###");
-                const e = buffer.indexOf("###E###");
+                // 2. Read String
+                let buffer = "";
+                let pixelIdx = 8; // Start after header
 
-                if(s!==-1 && e!==-1) {
-                    const b64 = buffer.substring(s+7, e);
-                    playAudioString(b64);
+                for (let i = 0; i < len; i++) {
+                    // Skip Alpha channels while reading
+                    if ((pixelIdx + 1) % 4 === 0) pixelIdx++;
+                    
+                    if (pixelIdx >= d.length) break;
+                    
+                    const charCode = d[pixelIdx];
+                    buffer += String.fromCharCode(charCode);
+                    pixelIdx++;
+                }
+
+                if (buffer.startsWith("data:audio")) {
+                    playAudioString(buffer);
                 } else {
-                    alert("No Audio Found! Make sure it is the original PNG.");
-                    status.textContent = "Error: Decode Failed";
+                    alert("Data corrupted or not found.");
                 }
             };
             img.src = src;
         }
 
         function playAudioString(b64) {
-            player = new Audio(b64);
-            player.play();
-            status.textContent = "Playing Real Audio...";
-            scanLine.style.display='block';
-            stopBtn.style.display='inline-block';
-
-            const startT = Date.now();
-            function ani() {
-                if(!player || player.paused) return;
-                requestAnimationFrame(ani);
-                const p = ((Date.now()-startT)%LOOP_MS)/LOOP_MS;
-                scanLine.style.transform = `translate(-50%,-50%) rotate(${p*360}deg) translate(50%,0)`;
+            try {
+                player = new Audio(b64);
+                player.play();
+                scanLine.style.display='block';
+                stopBtn.style.display='inline-block';
+                status.textContent = "Playing Real Audio...";
+                
+                const startT = Date.now();
+                function ani() {
+                    if(!player || player.paused) return;
+                    requestAnimationFrame(ani);
+                    const p = ((Date.now()-startT)%LOOP_MS)/LOOP_MS;
+                    scanLine.style.transform = `translate(-50%,-50%) rotate(${p*360}deg) translate(50%,0)`;
+                }
+                ani();
+                player.onended = stopPlayback;
+            } catch(e) {
+                alert("Audio Playback Error: " + e);
             }
-            ani();
-            
-            player.onended = stopPlayback;
         }
 
         function stopPlayback() {
@@ -338,5 +375,3 @@
     </script>
 </body>
 </html>
-
-```
