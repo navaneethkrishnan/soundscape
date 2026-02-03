@@ -3,15 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Soundscape Pro (Steganography)</title>
+    <title>Soundscape Final Version</title>
     <style>
-        body { margin: 0; background: #050505; color: #fff; font-family: monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+        body { margin: 0; background: #050505; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
         
         .radar-box {
             position: relative; margin-top: 15px;
             width: 95vw; height: 95vw; max-width: 500px; max-height: 500px;
             border-radius: 50%; border: 4px solid #333; background: #000;
-            overflow: hidden; box-shadow: 0 0 25px rgba(0,255,0,0.1);
+            overflow: hidden; box-shadow: 0 0 25px rgba(0,255,0,0.15);
         }
         canvas { display: block; width: 100%; height: 100%; }
 
@@ -24,7 +24,7 @@
         .btn-stop { background: #7f8c8d; }
         .btn-up { background: #27ae60; }
         
-        #status { color: #f1c40f; margin-bottom: 5px; font-size: 12px; }
+        #status { color: #f1c40f; margin-bottom: 5px; font-size: 12px; font-family: monospace; }
         
         /* Playback Scan Line */
         #scanLine {
@@ -78,7 +78,7 @@
         let player = null;
         let tempSnap = null;
 
-        // Init Canvas
+        // Init
         ctx.fillStyle = '#000'; ctx.fillRect(0,0,800,800);
 
         // --- 1. RECORDING LOOP ---
@@ -87,7 +87,6 @@
             try {
                 if(!stream) stream = await navigator.mediaDevices.getUserMedia({audio:true});
                 
-                // Visual Setup
                 if(!audioCtx) {
                     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                     const src = audioCtx.createMediaStreamSource(stream);
@@ -97,7 +96,6 @@
                     dataArray = new Uint8Array(analyser.frequencyBinCount);
                 }
 
-                // Recorder Setup
                 recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
                 chunks = [];
                 recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data); };
@@ -105,7 +103,6 @@
                 recorder.onstop = () => {
                     const blob = new Blob(chunks, {type:'audio/webm'});
                     chunks = [];
-                    // Process using the snapshot
                     if(tempSnap) processToImage(blob, tempSnap);
                 };
 
@@ -152,27 +149,20 @@
 
             angle += SPEED;
 
-            // LOOP END
             if(angle >= Math.PI*2) {
-                // 1. Snapshot BEFORE wipe
                 const snap = document.createElement('canvas');
                 snap.width = 800; snap.height = 800;
                 snap.getContext('2d').drawImage(canvas, 0, 0);
                 tempSnap = snap; 
 
-                // 2. Stop Recorder
                 recorder.stop(); 
-
-                // 3. Reset
                 angle = 0;
                 ctx.fillStyle='#000'; ctx.fillRect(0,0,800,800);
-
-                // 4. Restart
                 setTimeout(() => { if(isRec) recorder.start(); }, 50);
             }
         }
 
-        // --- 2. ROBUST ENCODING (Pixels) ---
+        // --- 2. ENCODING ---
         function processToImage(blob, visualSnap) {
             const reader = new FileReader();
             reader.readAsDataURL(blob);
@@ -183,72 +173,42 @@
         }
 
         function embedData(imgCvs, b64) {
-            // New Canvas (800w x 1200h) - More space for data
             const final = document.createElement('canvas');
-            const dataH = 400; // Large data area
+            const dataH = 400; 
             final.width = 800; final.height = 800 + dataH;
             const fCtx = final.getContext('2d');
 
-            // Draw Visual
             fCtx.fillStyle='#000'; fCtx.fillRect(0,0,800, final.height);
             fCtx.drawImage(imgCvs, 0, 0);
 
-            // Separator
+            // Separator & Header
             fCtx.fillStyle='#333'; fCtx.fillRect(0,800,800,2);
             fCtx.fillStyle='#fff'; fCtx.font='12px monospace'; fCtx.textAlign='center';
-            fCtx.fillText("AUDIO DATA REGION - DO NOT CROP", 400, 815);
+            fCtx.fillText("AUDIO DATA REGION", 400, 815);
 
-            // --- DIRECT PIXEL MAPPING ---
-            // Prepare Data String: Length + Separator + Base64
-            // We store the LENGTH of the string in the first few pixels to ensure we read back correctly.
-            
+            // Encode Logic
             const fullString = b64;
             const dataLength = fullString.length;
-            
-            // Get Image Data for the data region
-            // We start writing from y=820
             const startY = 820;
             const imgData = fCtx.createImageData(800, dataH - 20);
             const d = imgData.data;
             
-            // Encode Length (first 4 pixels = 32 bit integer)
-            // Storing length allows us to stop reading exactly where needed.
+            // Length Header (4 bytes)
             d[0] = (dataLength >> 24) & 0xFF;
             d[1] = (dataLength >> 16) & 0xFF;
             d[2] = (dataLength >> 8) & 0xFF;
             d[3] = (dataLength & 0xFF);
-            d[4] = 255; // Marker
-            d[5] = 255;
-            d[6] = 255;
-            d[7] = 255;
+            d[4] = 255; d[5] = 255; d[6] = 255; d[7] = 255;
 
-            // Encode String
-            let pixelIdx = 8; // Start after length header (4 pixels * 4 channels = 16 bytes, but we used 2 pixels)
-            // Actually, imageData is R,G,B,A. 
-            // We used 0-3 (Pixel 1) and 4-7 (Pixel 2). So data starts at index 8.
-
+            let pixelIdx = 8; 
             for (let i = 0; i < dataLength; i++) {
-                const charCode = fullString.charCodeAt(i);
-                
-                // Write into Red, Green, Blue channels sequentially for density
-                // This fits 3 chars per pixel, or we can stay safe with 1 char per pixel channel.
-                // Let's do 1 char per byte (channel).
-                
-                if (pixelIdx >= d.length) break; // Overflow protection
-                
-                d[pixelIdx] = charCode; // Write to current channel
-                d[pixelIdx + 3] = 255; // Alpha must be 255
-                
+                if (pixelIdx >= d.length) break;
+                d[pixelIdx] = fullString.charCodeAt(i);
+                d[pixelIdx + 3] = 255; 
                 pixelIdx++;
-                
-                // Skip Alpha channel (every 4th byte)
-                if ((pixelIdx + 1) % 4 === 0) {
-                    d[pixelIdx] = 255; // Set Alpha to opaque
-                    pixelIdx++;
-                }
+                if ((pixelIdx + 1) % 4 === 0) { d[pixelIdx] = 255; pixelIdx++; }
             }
 
-            // Put data back
             fCtx.putImageData(imgData, 0, startY);
 
             // Watermark
@@ -257,28 +217,25 @@
             fCtx.fillText(t, 400, final.height - 30);
 
             const url = final.toDataURL("image/png");
-            addToGallery(url, t, b64);
+            addToGallery(url, t);
         }
 
-        function addToGallery(url, time, directAudio) {
+        function addToGallery(url, time) {
             const div = document.createElement('div');
             div.className = 'item';
             div.innerHTML = `
                 <img src="${url}">
                 <div class="info">
                     <b>Rec: ${time}</b><br>
-                    <span>Size: 15s Audio</span>
+                    <span>Click Image to Play</span>
                 </div>
                 <a href="${url}" download="Soundscape_${Date.now()}.png" class="btn-dl">💾 Save PNG</a>
             `;
-            div.querySelector('img').onclick = () => {
-                if(directAudio) playAudioString(directAudio); // Session Cache
-                else playFromPixels(url); // Decode
-            };
+            div.querySelector('img').onclick = () => playFromPixels(url);
             gallery.prepend(div);
         }
 
-        // --- 3. DECODING ---
+        // --- 3. DECODING & DISPLAY ---
         document.getElementById('fileIn').onchange = e => {
             const f = e.target.files[0];
             if(f) {
@@ -290,53 +247,49 @@
 
         function playFromPixels(src) {
             stopPlayback();
-            status.textContent = "Analyzing Pixels...";
+            status.textContent = "Loading Image & Audio...";
             
             const img = new Image();
-            img.crossOrigin = "Anonymous"; // Fix for some browsers
+            img.crossOrigin = "Anonymous";
             img.onload = () => {
-                // Prepare Canvas for reading
+                // 1. DRAW IMAGE TO SCREEN (FIXED)
+                // Draw only the top 800x800 part (Visual) to the canvas
+                ctx.drawImage(img, 0, 0, 800, 800, 0, 0, 800, 800);
+                
+                // 2. READ AUDIO DATA
                 const tC = document.createElement('canvas');
                 tC.width = img.width; tC.height = img.height;
                 const tX = tC.getContext('2d');
-                // IMPORTANT: Disable smoothing to keep pixel values exact
                 tX.imageSmoothingEnabled = false; 
                 tX.drawImage(img, 0, 0);
                 
-                // Read from y=820
                 const startY = 820;
-                // Grab a large chunk
                 const imgData = tX.getImageData(0, startY, img.width, 380); 
                 const d = imgData.data;
 
-                // 1. Read Length Header
+                // Decode Length
                 const len = (d[0] << 24) | (d[1] << 16) | (d[2] << 8) | d[3];
                 
-                if (len <= 0 || len > 2000000) { // Sanity check (max 2MB string)
-                     alert("Could not detect valid audio header. Ensure this is the original PNG.");
-                     status.textContent = "Error: Invalid Header";
+                if (len <= 0 || len > 5000000) { 
+                     alert("No audio data found. Use original PNG.");
+                     status.textContent = "Error: Invalid Data";
                      return;
                 }
 
-                // 2. Read String
                 let buffer = "";
-                let pixelIdx = 8; // Start after header
+                let pixelIdx = 8;
 
                 for (let i = 0; i < len; i++) {
-                    // Skip Alpha channels while reading
                     if ((pixelIdx + 1) % 4 === 0) pixelIdx++;
-                    
                     if (pixelIdx >= d.length) break;
-                    
-                    const charCode = d[pixelIdx];
-                    buffer += String.fromCharCode(charCode);
+                    buffer += String.fromCharCode(d[pixelIdx]);
                     pixelIdx++;
                 }
 
                 if (buffer.startsWith("data:audio")) {
                     playAudioString(buffer);
                 } else {
-                    alert("Data corrupted or not found.");
+                    alert("Corrupted Audio Data.");
                 }
             };
             img.src = src;
@@ -360,7 +313,7 @@
                 ani();
                 player.onended = stopPlayback;
             } catch(e) {
-                alert("Audio Playback Error: " + e);
+                alert("Playback Error: " + e);
             }
         }
 
